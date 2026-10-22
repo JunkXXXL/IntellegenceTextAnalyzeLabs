@@ -1,87 +1,75 @@
-import json
 import pymorphy3 as p
 import re
 
 
 analyser = p.MorphAnalyzer()
 
-def preprocess_text(text: str):
-    text = text.lower()
-    link_end = 0
-    find_link = True
-    while find_link:
-        region = re.search("(?P<url>https?://[^\s]+)", text[link_end:])
-        if region is None:
-            find_link = False
+with open("Murat.txt", 'r') as fl:
+    text = " ".join(fl.readlines()).replace('\n', '').replace('(', '').replace(')', '').replace('«', '').replace('»', '').replace(",","")
+
+segmented_text = re.split(r'[.?\n]+', text)
+
+import nltk
+from nltk.tokenize import word_tokenize
+nltk.download('punkt_tab')
+
+tokenized_segmented_text = [word_tokenize(segment) for segment in segmented_text]
+
+first_condition = []
+
+
+def combine_nearest_words(sentence, word_index):
+    sentence_len = len(sentence)
+
+    def combine_next_word():
+        if word_index + 1 >= sentence_len:
+            return None
         else:
-            text_before = text[:region.start()]
-            text_after = text[region.end():]
-            text = text_before + "URL" + text_after
-            link_end = region.end()
-    parsed_text = ""
-    for word in text.split():
-        parsed_text += analyser.parse(word)[0].normal_form + " "
-    return parsed_text
+            return analyser.parse(sentence[word_index])[0].normal_form + " " + analyser.parse(sentence[word_index + 1])[
+                0].normal_form
+
+    def combine_prev_word():
+        if word_index - 1 < 0:
+            return None
+        else:
+            return sentence[word_index - 1] + " " + sentence[word_index]
+
+    combine = []
+    if not combine_next_word() is None:
+        combine.append(combine_next_word())
+    if not combine_prev_word() is None:
+        combine.append(combine_prev_word())
+
+    return combine
 
 
-def extract_messages(chat_json):
-    messages = []
-    for index, item in enumerate(chat_json["messages"]):
-        id = chat_json["name"] + f"_{index}"
-        raw = item.get("text", "")
-        if type(raw) is list:
-            new_raw = ""
-            for el in raw:
-                if type(el) is str:
-                    new_raw += " " + el
-            raw = new_raw
-        if len(raw) < 3:
-            continue
-        new_item = {"id": id, "raw": raw, "author": item.get('author', ''),
-                    "date": item.get('date', ""), 'reactions': item.get('reactions', "[]"),
-                    'preprocess_text': preprocess_text(raw)}
-        messages.append(new_item)
-    print(chat_json["name"], len(messages))
-    return messages
+for sentence in tokenized_segmented_text:
 
+    for element_index, word in enumerate(sentence):
+        term = analyser.parse(word)[0].tag.POS
+        if term == "NOUN" or term == "ADJF" or term == "ADJS":
+            words_combine = combine_nearest_words(sentence, element_index)
+            first_condition.extend(words_combine)
 
-if __name__ == "__main__":
+second_condition = []
 
-    messages = []
+for sentence in tokenized_segmented_text:
 
-    with open("tgjson/vlad.json", 'r', encoding="utf-8") as js:
-        data = json.load(js)
+    len_sentence = len(sentence)
+    for element_index in range(len_sentence-1):
+        term1 = analyser.parse(sentence[element_index])[0].tag
+        term2 = analyser.parse(sentence[element_index + 1])[0].tag
+        if (
+            term1.gender == term2.gender
+            and term1.number == term2.number
+            and term1.case == term2.case
+            and term1.number is not None
+            and term1.case is not None
+        ):
+            second_condition.append(analyser.parse(sentence[element_index])[0].normal_form + " " + analyser.parse(sentence[element_index + 1])[0].normal_form)
 
-    messages.extend(extract_messages(data))
+#NOun существит
+#ADJF ADJS прилагательное полное и краткое
 
-    with open("tgjson/lunapark.json", 'r', encoding="utf-8") as js:
-        data = json.load(js)
-
-    messages.extend(extract_messages(data))
-
-    with open("tgjson/m4nu11.json", 'r', encoding="utf-8") as js:
-        data = json.load(js)
-
-    messages.extend(extract_messages(data))
-
-    with open("tgjson/podols.json", 'r', encoding="utf-8") as js:
-        data = json.load(js)
-
-    messages.extend(extract_messages(data))
-
-    with open("tgjson/grips.json", 'r', encoding="utf-8") as js:
-        data = json.load(js)
-
-    messages.extend(extract_messages(data))
-
-    with open("tgjson/transformers.json", 'r', encoding="utf-8") as js:
-        data = json.load(js)
-
-    messages.extend(extract_messages(data))
-
-    with open('messages.json', 'w', encoding='utf-8-sig') as f:
-        json.dump(messages, f)
-
-    with open('messages.json', 'r', encoding='utf-8-sig') as f:
-          data = json.load(f)
-    print(data[1103:1110])
+print(first_condition)
+print(second_condition)
